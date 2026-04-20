@@ -1,3 +1,21 @@
+exports.updateRoom = async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) return res.status(400).json({ error: 'Room name is required' });
+    const room = await Room.findById(req.params.id);
+    if (!room) return res.status(404).json({ error: 'Room not found' });
+    // Check for duplicate name
+    const existing = await Room.findOne({ name });
+    if (existing && existing._id.toString() !== req.params.id) {
+      return res.status(409).json({ error: 'Room name already taken' });
+    }
+    room.name = name;
+    await room.save();
+    res.json(room);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update room' });
+  }
+};
 const Room = require('../models/Room');
 const Queue = require('../models/Queue');
 

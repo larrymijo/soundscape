@@ -15,6 +15,10 @@ exports.addToQueue = async (req, res) => {
   try {
     const { songId } = req.body;
     if (!songId) return res.status(400).json({ error: 'songId is required' });
+    const mongoose = require('mongoose');
+    if (!mongoose.Types.ObjectId.isValid(songId)) {
+      return res.status(400).json({ error: 'Invalid songId format' });
+    }
     const song = await Song.findById(songId);
     if (!song) return res.status(404).json({ error: 'Song not found' });
     const queue = await Queue.findOneAndUpdate(
