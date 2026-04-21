@@ -2,6 +2,8 @@
 
 Soundscape is a real-time collaborative music room app. Users can create or join rooms, queue up songs, and listen together with real-time synchronization.
 
+## Problem adressed
+
 Soundscape lets friends create music rooms, queue songs together, and stay in real-time sync solving the problem of streaming music at the same time with friends or in a party/gathering.
 
 ## Quick Start (Clone & Run in Under 5 Minutes)
