@@ -13,6 +13,14 @@ export default function Player({ currentSong, isPlaying, setIsPlaying, roomId, h
     audioRef.current.load();
     audioRef.current.play().catch(() => {});
     setIsPlaying(true);
+
+    return () => {
+      // Pause and reset when song changes or component unmounts
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = '';
+      }
+    };
   }, [currentSong?._id]);
 
   // Sync remote play/pause

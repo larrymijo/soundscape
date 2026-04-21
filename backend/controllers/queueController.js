@@ -1,3 +1,4 @@
+const mongoose = require('mongoose');
 const Queue = require('../models/Queue');
 const Song = require('../models/Song');
 
@@ -15,7 +16,6 @@ exports.addToQueue = async (req, res) => {
   try {
     const { songId } = req.body;
     if (!songId) return res.status(400).json({ error: 'songId is required' });
-    const mongoose = require('mongoose');
     if (!mongoose.Types.ObjectId.isValid(songId)) {
       return res.status(400).json({ error: 'Invalid songId format' });
     }
