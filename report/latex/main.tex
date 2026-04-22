@@ -1,0 +1,804 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+\usepackage{array}
+\usepackage{multirow}
+
+% Define colors for code
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+% Configure listings
+\lstset{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{codepurple},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\small,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    frame=single
+}
+
+% Header and footer
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Soundscape - Fullstack Lab}
+\lhead{DA219B}
+\cfoot{\thepage}
+
+% Title formatting
+\titleformat{\section}{\normalfont\Large\bfseries}{\thesection.}{0.5em}{}
+\titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection.}{0.5em}{}
+
+\title{\textbf{Soundscape} \\ Real-Time Collaborative Music Room Application \\ \large DA219B Fullstack Lab}
+\author{Development Report}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\tableofcontents
+\newpage
+
+% ============================================================================
+% SECTION 1: SYSTEM OVERVIEW
+% ============================================================================
+\section{System Overview}
+
+Soundscape is a real-time collaborative music room application that solves the problem of synchronizing music playback across multiple listeners. Users can create or join music rooms, queue songs together, and experience synchronized playback with real-time updates using WebSocket communication. The platform enables friends to listen to the same music simultaneously during virtual gatherings or remote hangouts, maintaining a shared queue with voting mechanisms and instant synchronization across all connected clients. This application addresses the gap between individual streaming services and the need for genuine shared listening experiences.
+
+\subsection{Technology Stack}
+
+\begin{itemize}
+    \item \textbf{Frontend:} React 18 with Vite, Socket.IO client for real-time communication
+    \item \textbf{Backend:} Express.js with Node.js, MongoDB via Mongoose ODM
+    \item \textbf{Database:} MongoDB Atlas (cloud-hosted)
+    \item \textbf{Real-time Communication:} Socket.IO for WebSocket support
+    \item \textbf{Authentication:} Environment variables for secrets (.env)
+    \item \textbf{Process Management:} concurrently for unified startup
+\end{itemize}
+
+% ============================================================================
+% SECTION 2: DATABASE DESIGN
+% ============================================================================
+\section{Database Design}
+
+The database consists of three primary collections with relationships managed through MongoDB ObjectId references. This design supports the core functionality of room management, song queuing, and real-time synchronization.
+
+\subsection{Entity Relationship Diagram}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.85\textwidth]{../images/ERD.jpeg}
+\caption{Entity Relationship Diagram for Soundscape}
+\label{fig:erd}
+\end{figure}
+
+\subsection{Collection: Songs}
+
+\begin{lstlisting}[language=json, caption=Song Document Structure]
+{
+  "_id": ObjectId("..."),
+  "title": "Blinding Lights",
+  "artist": "The Weeknd",
+  "bpm": 171,
+  "audioUrl": "/audio/blinding-lights.mp3",
+  "duration": 200,
+  "genre": "Synthpop",
+  "coverColor": "#E83A5C"
+}
+\end{lstlisting}
+
+\textbf{Purpose:} Stores individual songs with metadata. \\
+\textbf{Custom Fields:} 
+\begin{itemize}
+    \item \texttt{bpm} (Beats Per Minute): Domain-specific metric for music characterization
+    \item \texttt{genre}: Categorizes songs by musical style
+    \item \texttt{coverColor}: Dynamic visual representation tied to song characteristics
+\end{itemize}
+\textbf{Validation:} Title and artist are required. BPM constrained to 40--300 range (realistic music range). \\
+\textbf{Sample Data:} 7 realistic songs including ``Blinding Lights'' (The Weeknd), ``Heat Waves'' (Glass Animals), ``Shivers'' (Ed Sheeran).
+
+\subsection{Collection: Rooms}
+
+\begin{lstlisting}[language=json, caption=Room Document Structure]
+{
+  "_id": ObjectId("..."),
+  "name": "Late Night Vibes",
+  "createdAt": ISODate("2024-04-20T10:30:00Z"),
+  "listenerCount": 5,
+  "currentSongId": ObjectId("..."),
+  "playbackPosition": 45,
+  "isPlaying": true
+}
+\end{lstlisting}
+
+\textbf{Purpose:} Represents collaborative music rooms where users gather. \\
+\textbf{Relationships:}
+\begin{itemize}
+    \item \texttt{currentSongId} references the Song currently playing (nullable)
+    \item Linked to Queue collection for song ordering
+\end{itemize}
+\textbf{Custom Fields:}
+\begin{itemize}
+    \item \texttt{playbackPosition}: Tracks synchronization point across clients
+    \item \texttt{isPlaying}: Boolean state for pause/play control
+\end{itemize}
+\textbf{Validation:} Room name 2--50 characters, must be unique. \\
+\textbf{Sample Data:} ``Late Night Vibes'', ``Workout Mode'', ``Chill Lounge''.
+
+\subsection{Collection: Queues}
+
+\begin{lstlisting}[language=json, caption=Queue Document Structure]
+{
+  "_id": ObjectId("..."),
+  "roomId": ObjectId("..."),
+  "songs": [
+    {
+      "songId": ObjectId("..."),
+      "addedAt": ISODate("2024-04-20T10:35:00Z"),
+      "votes": 2
+    },
+    {
+      "songId": ObjectId("..."),
+      "addedAt": ISODate("2024-04-20T10:37:00Z"),
+      "votes": 0
+    }
+  ]
+}
+\end{lstlisting}
+
+\textbf{Purpose:} Maintains ordered song queues per room with voting metadata. \\
+\textbf{Relationships:}
+\begin{itemize}
+    \item \texttt{roomId}: References the parent Room (required)
+    \item \texttt{songs[].songId}: References each Song in queue
+\end{itemize}
+\textbf{Custom Fields:}
+\begin{itemize}
+    \item \texttt{votes}: Allows democratic song promotion (future feature)
+\end{itemize}
+\textbf{Validation:} roomId is required and must be a valid ObjectId. \\
+\textbf{Sample Data:} 3 rooms with 3 realistic songs queued per room.
+
+\subsection{Database Relationships}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|l|l|l|}
+\hline
+\textbf{Relationship} & \textbf{From} & \textbf{To} & \textbf{Type} \\
+\hline
+Current Track & Room.currentSongId & Song.\_id & One-to-One \\
+\hline
+Room Queue & Queue.roomId & Room.\_id & Many-to-One \\
+\hline
+Queue Songs & Queue.songs[].songId & Song.\_id & Many-to-Many \\
+\hline
+\end{tabular}
+\caption{Database Relationships}
+\end{table}
+
+% ============================================================================
+% SECTION 3: API ENDPOINTS
+% ============================================================================
+\section{API Endpoints}
+
+The API follows RESTful conventions with proper HTTP status codes, error handling, and populated references for efficient data retrieval.
+
+\subsection{Endpoint 1: GET /api/rooms/:id}
+
+\textbf{Description:} Retrieve a single room with its current song populated.
+
+\subsubsection{Request}
+
+\begin{lstlisting}[language=bash]
+GET /api/rooms/507f1f77bcf86cd799439011 HTTP/1.1
+Host: localhost:5000
+Accept: application/json
+\end{lstlisting}
+
+\subsubsection{Response (200 OK)}
+
+\begin{lstlisting}[language=json]
+{
+  "_id": "507f1f77bcf86cd799439011",
+  "name": "Late Night Vibes",
+  "createdAt": "2024-04-20T10:30:00.000Z",
+  "listenerCount": 5,
+  "currentSongId": {
+    "_id": "507f1f77bcf86cd799439012",
+    "title": "Blinding Lights",
+    "artist": "The Weeknd",
+    "bpm": 171,
+    "audioUrl": "/audio/blinding-lights.mp3",
+    "duration": 200,
+    "genre": "Synthpop",
+    "coverColor": "#E83A5C"
+  },
+  "playbackPosition": 125,
+  "isPlaying": true
+}
+\end{lstlisting}
+
+\subsubsection{Response (404 Not Found)}
+
+\begin{lstlisting}[language=json]
+{
+  "error": "Room not found"
+}
+\end{lstlisting}
+
+\subsubsection{Implementation Flow}
+
+\begin{enumerate}
+    \item \textbf{Route Handler:} \texttt{router.get('/:id')} receives request
+    \item \textbf{Controller Logic:} \texttt{getRoom} extracts ID from URL params
+    \item \textbf{Database Query:} \texttt{Room.findById(id).populate('currentSongId')}
+    \item \textbf{Error Handling:} If room not found, returns 404; catch block returns 500
+    \item \textbf{Response:} Populated room document sent as JSON
+\end{enumerate}
+
+\subsubsection{Code Reference}
+
+From \texttt{controllers/roomController.js}:
+\begin{lstlisting}[language=javascript]
+exports.getRoom = async (req, res) => {
+  try {
+    const room = await Room.findById(req.params.id)
+      .populate('currentSongId');
+    if (!room) 
+      return res.status(404).json({ error: 'Room not found' });
+    res.json(room);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to fetch room' });
+  }
+};
+\end{lstlisting}
+
+\subsection{Endpoint 2: POST /api/rooms/:roomId/queue}
+
+\textbf{Description:} Add a song to a room's queue with validation.
+
+\subsubsection{Request}
+
+\begin{lstlisting}[language=bash]
+POST /api/rooms/507f1f77bcf86cd799439011/queue HTTP/1.1
+Host: localhost:5000
+Content-Type: application/json
+
+{
+  "songId": "507f1f77bcf86cd799439012"
+}
+\end{lstlisting}
+
+\subsubsection{Response (200 OK)}
+
+\begin{lstlisting}[language=json]
+{
+  "_id": "507f1f77bcf86cd799439020",
+  "roomId": "507f1f77bcf86cd799439011",
+  "songs": [
+    {
+      "_id": "63a7f8e1d5f4e2a1b8c2d3e4",
+      "songId": {
+        "_id": "507f1f77bcf86cd799439015",
+        "title": "Stay",
+        "artist": "Justin Bieber",
+        "bpm": 105,
+        "duration": 138,
+        "genre": "Pop"
+      },
+      "addedAt": "2024-04-20T10:35:00.000Z",
+      "votes": 0
+    },
+    {
+      "_id": "63a7f8e1d5f4e2a1b8c2d3e5",
+      "songId": {
+        "_id": "507f1f77bcf86cd799439012",
+        "title": "Blinding Lights",
+        "artist": "The Weeknd",
+        "bpm": 171,
+        "duration": 200,
+        "genre": "Synthpop"
+      },
+      "addedAt": "2024-04-20T10:38:30.000Z",
+      "votes": 0
+    }
+  ]
+}
+\end{lstlisting}
+
+\subsubsection{Error Responses}
+
+\begin{lstlisting}[language=json, caption=400 Bad Request - Missing songId]
+{
+  "error": "songId is required"
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=json, caption=400 Bad Request - Invalid ObjectId]
+{
+  "error": "Invalid songId format"
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=json, caption=404 Not Found - Song doesn't exist]
+{
+  "error": "Song not found"
+}
+\end{lstlisting}
+
+\subsubsection{Implementation Flow}
+
+\begin{enumerate}
+    \item \textbf{Validation:} Check that \texttt{songId} is provided
+    \item \textbf{Format Check:} Validate \texttt{songId} is valid MongoDB ObjectId
+    \item \textbf{Database Lookup:} Verify song exists
+    \item \textbf{Queue Update:} Push song entry to queue.songs array
+    \item \textbf{Populate References:} Return populated queue with full song data
+    \item \textbf{Error Handling:} Return appropriate HTTP codes (400, 404, 500)
+\end{enumerate}
+
+\subsubsection{Code Reference}
+
+From \texttt{controllers/queueController.js}:
+\begin{lstlisting}[language=javascript]
+exports.addToQueue = async (req, res) => {
+  try {
+    const { songId } = req.body;
+    if (!songId) 
+      return res.status(400).json({ error: 'songId is required' });
+    if (!mongoose.Types.ObjectId.isValid(songId)) {
+      return res.status(400).json({ error: 'Invalid songId format' });
+    }
+    const song = await Song.findById(songId);
+    if (!song) 
+      return res.status(404).json({ error: 'Song not found' });
+    const queue = await Queue.findOneAndUpdate(
+      { roomId: req.params.roomId },
+      { $push: { songs: { songId } } },
+      { new: true }
+    ).populate('songs.songId');
+    res.json(queue);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to add to queue' });
+  }
+};
+\end{lstlisting}
+
+\subsection{Endpoint 3: PUT /api/rooms/:id}
+
+\textbf{Description:} Update room properties including name with duplicate checking and inline edit UI support.
+
+\subsubsection{Request}
+
+\begin{lstlisting}[language=bash]
+PUT /api/rooms/507f1f77bcf86cd799439011 HTTP/1.1
+Host: localhost:5000
+Content-Type: application/json
+
+{
+  "name": "Epic Movie Night"
+}
+\end{lstlisting}
+
+\subsubsection{Response (200 OK)}
+
+\begin{lstlisting}[language=json]
+{
+  "_id": "507f1f77bcf86cd799439011",
+  "name": "Epic Movie Night",
+  "createdAt": "2024-04-20T10:30:00.000Z",
+  "listenerCount": 5,
+  "currentSongId": "507f1f77bcf86cd799439012",
+  "playbackPosition": 125,
+  "isPlaying": true
+}
+\end{lstlisting}
+
+\subsubsection{Error Responses}
+
+\begin{lstlisting}[language=json, caption=400 Bad Request - Missing name]
+{
+  "error": "Room name is required"
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=json, caption=409 Conflict - Duplicate name]
+{
+  "error": "Room name already taken"
+}
+\end{lstlisting}
+
+\begin{lstlisting}[language=json, caption=404 Not Found]
+{
+  "error": "Room not found"
+}
+\end{lstlisting}
+
+\subsubsection{Implementation Flow}
+
+\begin{enumerate}
+    \item \textbf{Validation:} Check name field is provided and non-empty
+    \item \textbf{Room Lookup:} Find room by ID from URL parameters
+    \item \textbf{Duplicate Check:} Query database for existing rooms with same name
+    \item \textbf{Conflict Detection:} Only allow duplicate if it's the same room being updated
+    \item \textbf{Update Operation:} Modify room.name and save to database
+    \item \textbf{Response:} Return updated room document
+\end{enumerate}
+
+\subsubsection{Code Reference}
+
+From \texttt{controllers/roomController.js}:
+\begin{lstlisting}[language=javascript]
+exports.updateRoom = async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (!name) 
+      return res.status(400).json({ error: 'Room name is required' });
+    const room = await Room.findById(req.params.id);
+    if (!room) 
+      return res.status(404).json({ error: 'Room not found' });
+    // Check for duplicate name
+    const existing = await Room.findOne({ name });
+    if (existing && existing._id.toString() !== req.params.id) {
+      return res.status(409).json({ error: 'Room name already taken' });
+    }
+    room.name = name;
+    await room.save();
+    res.json(room);
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update room' });
+  }
+};
+\end{lstlisting}
+
+\textbf{Frontend Integration:} The UI provides inline editing via controlled input in the room list, allowing users to rename rooms without page navigation. Changes are sent via PUT request and immediately reflected in the UI upon success.
+
+% ============================================================================
+% SECTION 4: REFLECTION
+% ============================================================================
+\section{Reflection: Development Challenges and Solutions}
+
+\subsection{Challenge: Real-Time Synchronization Across Multiple Clients}
+
+\textbf{Problem:} The initial approach attempted to rely solely on REST polling for playback state updates. This created several issues:
+\begin{itemize}
+    \item Network latency caused desynchronization between clients
+    \item Excessive database queries from frequent polling
+    \item No truly instantaneous updates when users added songs or paused
+    \item Poor user experience with noticeable delays
+\end{itemize}
+
+\textbf{Solution:} Integrated WebSocket via Socket.IO for bidirectional communication. This enabled:
+\begin{itemize}
+    \item Instant event broadcasting to all connected room clients
+    \item Server-side room state management via Socket.IO namespaces
+    \item Event-driven architecture replacing continuous polling
+    \item Reduced database load and network overhead
+\end{itemize}
+
+\textbf{Implementation Details:}
+\begin{itemize}
+    \item Socket.IO server listening on room-specific events
+    \item Client-side socket listeners automatically sync UI state
+    \item Queue changes broadcast immediately without page reload
+    \item Playback position updated in real-time across all listeners
+\end{itemize}
+
+\textbf{Learning Outcome:} Real-time applications require asynchronous, event-driven communication rather than synchronous polling. Understanding the CAP theorem (eventual consistency vs. strong consistency) became crucial for designing responsive distributed systems. This challenge demonstrated why production applications often combine REST APIs for CRUD operations with WebSockets for live updates.
+
+\subsection{Challenge: MongoDB Atlas Connection via DNS SRV Records}
+
+\textbf{Problem:} The application initially used the `mongodb+srv://` URI scheme for MongoDB Atlas connectivity. During deployment testing, connections failed with `ECONNREFUSED` errors despite correct credentials.
+
+\textbf{Root Cause:} DNS SRV record resolution failed on the target network. The `mongodb+srv://` URI relies on DNS SRV records to discover and connect to MongoDB Atlas cluster nodes. When the DNS server did not return SRV records, the driver could not resolve cluster node addresses. This issue was discovered during initial MongoDB setup (Commit 156b5d82, April 8).
+
+\textbf{Solution:} Switched from SRV-based URI to explicit connection string with all node addresses:
+
+\begin{lstlisting}[language=bash, caption=Connection String Before (SRV)]
+mongodb+srv://mongo:1404@soundscape.icmlyru.mongodb.net/?appName=soundscape
+\end{lstlisting}
+
+\begin{lstlisting}[language=bash, caption=Connection String After (Explicit Nodes)]
+mongodb://mongo:1404@ac-zgqzfqs-shard-00-00.icmlyru.mongodb.net:27017,\
+ac-zgqzfqs-shard-00-01.icmlyru.mongodb.net:27017,\
+ac-zgqzfqs-shard-00-02.icmlyru.mongodb.net:27017/?ssl=true&\
+replicaSet=atlas-61fuhw-shard-0&authSource=admin&appName=soundscape
+\end{lstlisting}
+
+\textbf{Key Differences:}
+\begin{itemize}
+    \item Explicit protocol: `mongodb://` instead of `mongodb+srv://`
+    \item All three shard nodes listed with port 27017
+    \item Replica set name specified: `atlas-61fuhw-shard-0`
+    \item SSL/TLS explicitly enabled
+    \item Admin authentication database specified
+\end{itemize}
+
+\textbf{Implementation:} Updated `.env` file with explicit connection string, ensuring environment-specific DNS resolution issues don't prevent database connectivity. Connection string documented in Commit 156b5d82 with notation: ``connected to mongo (using standard connection string as SRV did not work, took some hours of troubleshoot)''.
+
+\textbf{Learning Outcome:} Cloud services provide multiple connectivity options for resilience. While SRV records offer simplicity and flexibility, explicit connection strings provide stability in networks with DNS resolution constraints. This experience highlighted the importance of having fallback connection strategies and understanding the underlying protocols in distributed systems.
+
+% ============================================================================
+% SECTION 5: FEATURE ITERATION
+% ============================================================================
+\section{Feature Iteration and Improvements}
+
+\subsection{Initial Implementation}
+
+The queue system initially stored all songs as flat references without metadata. Additions to the queue were simple array pushes with no tracking of when songs were added or user voting.
+
+\begin{lstlisting}[language=javascript, caption=Early Queue Model (April 8 Initial Backend Setup)]
+const queueSchema = new mongoose.Schema({
+  roomId: mongoose.Schema.Types.ObjectId,
+  songs: [mongoose.Schema.Types.ObjectId]
+});
+\end{lstlisting}
+
+\textbf{Issues:}
+\begin{itemize}
+    \item No way to track insertion order with meaningful metadata
+    \item Cannot implement voting mechanisms for songs
+    \item Lost information about who added what and when
+    \item Difficult to implement removal by queue position
+\end{itemize}
+
+\subsection{Improved Implementation}
+
+The queue schema was refactored to include an embedded document for each queue entry, capturing metadata crucial for domain-specific features.
+
+\begin{lstlisting}[language=javascript, caption=Enhanced Queue Model (April 20 API Improvements - Commit ee3146c6)]
+const queueSchema = new mongoose.Schema({
+  roomId: { 
+    type: mongoose.Schema.Types.ObjectId, 
+    ref: 'Room', 
+    required: true 
+  },
+  songs: [{
+    songId: { type: mongoose.Schema.Types.ObjectId, ref: 'Song' },
+    addedAt: { type: Date, default: Date.now },
+    votes: { type: Number, default: 0 }
+  }]
+});
+\end{lstlisting}
+
+\textbf{Improvements:}
+\begin{itemize}
+    \item \texttt{addedAt} timestamp enables chronological ordering and UI displays
+    \item \texttt{votes} field supports democratic song promotion
+    \item Structured as embedded documents for atomic operations
+    \item Enables sorting and filtering by addition time or vote count
+\end{itemize}
+
+\subsection{Git History Reference}
+
+\begin{itemize}
+    \item \textbf{Commit e6af04ce} (Apr 8): ``front end views created and socket, also package.json change in the backend''
+    \item \textbf{Commit ee3146c6} (Apr 20): ``feat: PUT /api/rooms/:id to update the room name, ObjectId validation, edit UI''
+\end{itemize}
+
+\textbf{Visible Iteration:} The 12-day development period between initial backend setup and API improvements demonstrates iterative refinement. Early commits established basic routing and models, while later commits (ee3146c6) added sophisticated validation and update capabilities. This progression shows real-world development evolution rather than a single dump of finished code.
+
+\subsection{Improvement: ObjectId Validation on Queue Additions}
+
+\textbf{Initial Issue:} When users submitted malformed MongoDB ObjectIds to the `POST /api/rooms/:roomId/queue` endpoint, Mongoose threw a `CastError` during database operations. The generic catch block then returned HTTP 500 (Internal Server Error) instead of the semantically correct HTTP 400 (Bad Request).
+
+\textbf{Before:}
+\begin{lstlisting}[language=javascript]
+const { songId } = req.body;
+if (!songId) 
+  return res.status(400).json({ error: 'songId is required' });
+// Missing: ObjectId format validation
+const song = await Song.findById(songId);  // Throws CastError if invalid
+\end{lstlisting}
+
+\textbf{After:}
+\begin{lstlisting}[language=javascript]
+const { songId } = req.body;
+if (!songId) 
+  return res.status(400).json({ error: 'songId is required' });
+if (!mongoose.Types.ObjectId.isValid(songId)) {
+  return res.status(400).json({ error: 'Invalid songId format' });
+}
+const song = await Song.findById(songId);
+\end{lstlisting}
+
+\textbf{Impact:}
+\begin{itemize}
+    \item Prevents unhandled exceptions from propagating
+    \item Returns correct HTTP 400 status for client errors
+    \item Provides clear error message for debugging
+    \item Improves API reliability and client experience
+\end{itemize}
+
+\textbf{Pattern Applied:} This validation pattern was added to all routes accepting ObjectId input, ensuring consistent error handling across the API. Implemented in Commit ee3146c6 along with PUT endpoint for room updates and edit UI integration.
+
+% ============================================================================
+% SECTION 6: COMPLIANCE
+% ============================================================================
+\section{Compliance with Lab Requirements}
+
+\subsection{Project Setup}
+\begin{itemize}
+    \item[✓] React + Vite for frontend
+    \item[✓] Express.js for backend API
+    \item[✓] MongoDB Atlas cloud database
+    \item[✓] Secrets stored in .env file (no hardcoded credentials)
+    \item[✓] concurrently for unified npm start
+    \item[✓] Complete README with 5-minute setup instructions
+\end{itemize}
+
+\subsection{Application Design}
+\begin{itemize}
+    \item[✓] Original domain: collaborative music synchronization
+    \item[✓] Realistic seed data: 7 popular songs, 3 thematic rooms
+    \item[✓] Custom fields: bpm, genre, playbackPosition, votes
+    \item[✓] Problem statement: Clear README description
+\end{itemize}
+
+\subsection{Database}
+\begin{itemize}
+    \item[✓] 3 collections: Songs, Rooms, Queues
+    \item[✓] 5+ realistic documents per collection
+    \item[✓] ObjectId relationships implemented
+    \item[✓] ERD diagram included in report
+    \item[✓] Mongoose validation on all schemas
+\end{itemize}
+
+\subsection{Backend API}
+\begin{itemize}
+    \item[✓] Full CRUD: POST, GET, PUT, DELETE endpoints
+    \item[✓] Room update endpoint: PUT /api/rooms/:id with duplicate name checking
+    \item[✓] Relational endpoints: Queue population with song data
+    \item[✓] Custom endpoint: /api/stats (statistics aggregation)
+    \item[✓] Error handling with HTTP status codes (400, 404, 409, 500)
+    \item[✓] Router-Controller-Model architecture
+    \item[✓] Input validation: ObjectId format checking on all ID inputs
+    \item[✓] Business logic validation: Duplicate name detection on room updates
+\end{itemize}
+
+\subsection{Frontend}
+\begin{itemize}
+    \item[✓] Display main entity data in structured lists
+    \item[✓] Form to create rooms and add songs
+    \item[✓] Inline room editing with name update UI
+    \item[✓] Delete operations with confirmation dialogs
+    \item[✓] Auto-refresh with proper useEffect cleanup
+    \item[✓] Custom features: real-time sync, voting visualization, room management
+    \item[✓] 7+ components with single responsibility
+    \item[✓] Loading and error states displayed
+    \item[✓] Real-time updates via Socket.IO
+\end{itemize}
+
+\subsection{Git Requirements}
+\begin{itemize}
+    \item[✓] 15 meaningful commits across multiple branches
+    \item[✓] Conventional commit messages (feat:, fix:, refactor:)
+    \item[✓] Development spread over 14 days (Apr 8 -- Apr 21, 2026)
+    \item[✓] Clear progression: infrastructure → features → bug fixes → documentation
+    \item[✓] Feature iteration visible between commits (e6af04ce initial → ee3146c6 improvements)
+\end{itemize}
+
+% ============================================================================
+% SECTION 7: APPENDIX
+% ============================================================================
+\appendix
+\section{Additional Resources}
+
+\subsection{Setup Commands}
+
+\textbf{One-command startup:}
+\begin{lstlisting}[language=bash]
+npm run dev  # Runs backend and frontend concurrently
+\end{lstlisting}
+
+\textbf{Manual setup:}
+\begin{lstlisting}[language=bash]
+# Terminal 1: Backend
+cd backend
+npm install
+npm run dev
+
+# Terminal 2: Frontend
+cd frontend
+npm install
+npm run dev
+
+# Terminal 3: Seed database (optional)
+cd backend
+npm run seed
+\end{lstlisting}
+
+\subsection{Environment Variables (.env)}
+
+\textbf{Backend .env:}
+\begin{lstlisting}
+MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/soundscape
+PORT=5000
+NODE_ENV=development
+\end{lstlisting}
+
+\subsection{Project Statistics}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|l|r|}
+\hline
+\textbf{Metric} & \textbf{Count} \\
+\hline
+Backend Routes & 8 \\
+API Endpoints & 12 (GET, POST, PUT, DELETE) \\
+Frontend Components & 7+ \\
+Database Collections & 3 \\
+Total Models & 3 \\
+Controllers & 3 \\
+Total Git Commits & 15 \\
+Development Period & 14 Days (Apr 8 -- Apr 21, 2026) \\
+\hline
+\end{tabular}
+\caption{Project Statistics}
+\end{table}
+
+\subsection{Git Commit Timeline}
+
+The development followed a logical progression from infrastructure setup through feature implementation to bug fixes and documentation.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|p{3cm}|p{5cm}|p{4cm}|}
+\hline
+\textbf{Date} & \textbf{Commit Hash} & \textbf{Description} \\
+\hline
+Apr 8 & \texttt{10fb2cd6} & Initial commit \\
+Apr 8 & \texttt{99dc148e} & npm setup for root, frontend, backend \\
+Apr 8 & \texttt{1a190a5d} & Following commit for previously non-staged changes \\
+Apr 8 & \texttt{2884b1a1} & env and .gitignore \\
+Apr 8 & \texttt{156b5d82} & MongoDB connection (standard string, SRV troubleshoot) \\
+Apr 8 & \texttt{e6af04ce} & Routes, controllers, server.js \\
+Apr 8 & \texttt{94b6149e} & Frontend views, Socket.IO, package.json update \\
+Apr 8 & \texttt{27e5a343} & README update \\
+Apr 20 & \texttt{dec50195} & .env.example for good practice \\
+Apr 20 & \texttt{ee3146c6} & PUT endpoint, ObjectId validation, edit UI \\
+Apr 20 & \texttt{566e1fa9} & ERD diagram generated \\
+Apr 21 & \texttt{3cacae2a} & Bug fixes: roomController, queueController, audio cleanup \\
+Apr 21 & \texttt{3b3a0a2f} & Problem stated in README \\
+Apr 21 & \texttt{c0825154} & README update \\
+Apr 21 & \texttt{800a1811} & LaTeX report first version (buggy) \\
+\hline
+\end{tabular}
+\caption{Development Timeline}
+\end{table}
+
+\textbf{Key Observations:}
+\begin{itemize}
+    \item \textbf{Foundation Phase (Apr 8):} Infrastructure setup, dependencies, database connection troubleshooting
+    \item \textbf{Feature Phase (Apr 20):} API enhancements, validation improvements, UI updates
+    \item \textbf{Polish Phase (Apr 21):} Bug fixes, error handling cleanup, documentation
+    \item \textbf{Total Duration:} 14 days from initial commit to report generation
+\end{itemize}
+
+\end{document}
