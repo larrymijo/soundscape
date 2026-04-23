@@ -1,0 +1,255 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{geometry}
+\geometry{margin=0.9in, top=1in, bottom=0.9in}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{fancyhdr}
+\usepackage{titlesec}
+
+% Define colors for code
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+% Configure listings
+\lstset{
+    backgroundcolor=\color{backcolour},
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{codepurple},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,
+    breaklines=true,
+    captionpos=b,
+    keepspaces=true,
+    numbers=left,
+    numbersep=5pt,
+    showspaces=false,
+    showstringspaces=false,
+    showtabs=false,
+    tabsize=2,
+    frame=single
+}
+
+% Header and footer
+\pagestyle{fancy}
+\fancyhf{}
+\rhead{Soundscape}
+\lhead{DA219B}
+\cfoot{\thepage}
+
+% Compact title formatting
+\titleformat{\section}{\normalfont\large\bfseries}{\thesection.}{0.3em}{}
+\titleformat{\subsection}{\normalfont\normalsize\bfseries}{\thesubsection.}{0.3em}{}
+
+\title{\textbf{Soundscape} \\ Real-Time Collaborative Music Rooms \\ \small DA219B Fullstack Lab Report}
+\author{Lawrence Arciniegas}
+\date{\today}
+
+\begin{document}
+
+\maketitle
+
+\newpage
+
+% ============================================================================
+% SECTION 1: SYSTEM OVERVIEW
+% ============================================================================
+\section{System Overview}
+
+Soundscape is a web application that aims to solve one problem: letting people listen to the same music at the same time and stay sync. It is designed so that you join a room and just jam to your favorite songs with a cool interphase that foucus on making it a visual experience. Although other apps like Spotify offers similar options, Soundscape is focused on the social aspect of music listening and provides an inmersive experience.
+
+% ============================================================================
+% SECTION 2: DATABASE DESIGN
+% ============================================================================
+\section{Database Design}
+
+Three collections with ObjectId relationships enable the core functionality:
+
+\textbf{Songs}: Stores metadata (title, artist, BPM, duration, genre, coverColor). BPM field is domain-specific, ranging 40--300 for realistic music. Validation requires title and artist.
+
+\textbf{Rooms}: Represents collaborative listening spaces with name, listener count, and playback state (currentSongId ref, playbackPosition, isPlaying). Name must be unique and 2--50 characters.
+
+\textbf{Queues}: Maintains ordered song queues per room. Embeds songId references with addedAt timestamps and votes field (enables future democratic features). Required roomId links to parent Room.
+
+\textbf{Relationships}: Room → currentSongId (One-to-One via ref), Queue → Room (Many-to-One), Queue.songs → Song (Many-to-Many array of refs).
+
+\subsection{ERD}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.75\textwidth]{../images/ERD.jpeg}
+\caption{Entity Relationship Diagram}
+\label{fig:erd}
+\end{figure}
+
+% ============================================================================
+% SECTION 3: API ENDPOINTS
+% ============================================================================
+\section{API Endpoints}
+
+\subsection{Endpoint 1: POST /api/rooms/:roomId/queue}
+
+\textbf{Purpose}: Add a song to a room's queue with ObjectId validation.
+
+\textbf{Request}: \texttt{Content-Type: application/json}
+\begin{lstlisting}[language=json]
+{
+  "songId": "507f1f77bcf86cd799439012"
+}
+\end{lstlisting}
+
+\textbf{Response (200)}: 
+\begin{lstlisting}[language=json]
+{
+  "_id": "507f1f77bcf86cd799439020",
+  "roomId": "507f1f77bcf86cd799439011",
+  "songs": [
+    {
+      "songId": {
+        "_id": "507f1f77bcf86cd799439012",
+        "title": "Blinding Lights",
+        "artist": "The Weeknd"
+      },
+      "addedAt": "2026-04-20T10:38:30Z",
+      "votes": 0
+    }
+  ]
+}
+\end{lstlisting}
+
+\textbf{Error Handling}: Returns 400 for missing/invalid songId, 404 if song doesn't exist, 500 on server error.
+
+\subsection{Endpoint 2: PUT /api/rooms/:id}
+
+\textbf{Purpose}: Update room name with duplicate prevention.
+
+\textbf{Request}: 
+\begin{lstlisting}[language=json]
+{
+  "name": "Epic Movie Night"
+}
+\end{lstlisting}
+
+\textbf{Response (200)}: Updated room document with new name.
+
+\textbf{Error Handling}: 400 if name missing, 404 if room not found, 409 if name already exists.
+
+% ============================================================================
+% SECTION 4: REFLECTION & CHALLENGES
+% ============================================================================
+\section{Challenges, Solutions \& Learning}
+
+\subsection{Challenge 1: Real-Time Synchronization}
+
+\textbf{Problem}: Initial approach relied on REST polling, causing visible playback desynchronization between clients and excessive database queries.
+
+\textbf{Solution}: Implemented WebSocket via Socket.IO for bidirectional, event-driven communication. Clients now receive instant updates when queue changes or playback state shifts, eliminating polling overhead.
+
+\textbf{Learning}: General web applications combine REST (CRUD) with WebSockets (live updates). This is a common pattern for real-time apps, and understanding when to use each is very good for performance and user experience.
+
+\subsection{Challenge 2: MongoDB Connection}
+
+\textbf{Problem}: \texttt{mongodb+srv://} URI failed due to DNS SRV record resolution issues. Connections to the database were refused despite valid credentials.
+
+\textbf{Solution}: Switched to explicit connection string listing all three shard nodes with ports: \texttt{mongodb://host1:27017,host2:27017,host3:27017/?ssl=true\&replicaSet=...}
+
+\textbf{Learning}: Cloud services provide multiple connectivity strategies. While SRV offers flexibility, explicit strings in this case showed stability. Always have fallback strategies. (this took a while to figure out!)
+
+% ============================================================================
+% SECTION 5: FEATURE ITERATION
+% ============================================================================
+\section{Feature Iteration: Queue System Evolution}
+
+\textbf{Initial (Apr 8, commit e6af04ce)}: Queue stored flat song ObjectId array with no metadata.
+\begin{lstlisting}[language=javascript]
+songs: [ObjectId, ObjectId, ObjectId]
+\end{lstlisting}
+
+\textbf{Problem}: No insertion timestamps, no voting capability, lost context about when/who added songs.
+
+\textbf{Improved (Apr 20, commit ee3146c6)}: Enhanced to embedded documents capturing metadata.
+\begin{lstlisting}[language=javascript]
+songs: [{
+  songId: ObjectId,
+  addedAt: Date,
+  votes: Number
+}]
+\end{lstlisting}
+
+\textbf{Impact}: Enables temporal ordering, this for future features (vote-to-skip).
+
+% ============================================================================
+% SECTION 6: ADDITIONAL TECHNOLOGIES
+% ============================================================================
+\section{Extra Libraries \& Technologies}
+
+\begin{itemize}
+    \item \textbf{Socket.IO}: Real-time WebSocket communication with fallback support
+    \item \textbf{Mongoose ODM}: Schema validation, population, atomic operations on MongoDB
+    \item \textbf{CORS}: Cross-Origin Resource Sharing for frontend-backend communication
+    \item \textbf{dotenv}: Environment variable management for secrets (.env)
+    \item \textbf{concurrently}: Single-command startup for frontend and backend
+    \item \textbf{StackOverflow}: Troubleshooting MongoDB connection issues and Socket.IO integration patterns
+    \item \textbf{Claude}: Assistance with API design, error handling strategies, and report structuring
+    \item \textbf{GitHub Copilot}: Code suggestions for Express routes, Mongoose schemas, and React components
+    \item \textbf{Latex}: Report formatting and structuring for clear presentation of technical details
+\end{itemize}
+
+% ============================================================================
+% SECTION 7: DIFFERENT APPROACH
+% ============================================================================
+\section{How I Would Approach Differently}
+
+\begin{enumerate}
+    \item \textbf{Start with API Design}: Define API contracts and data models first for a having a better development
+    \item \textbf{API-First Design}: Define API specs before implementation for better frontend-backend alignment
+    \item \textbf{Separate Authentication}: Implement user accounts and JWT tokens earlier to support multi-user scenarios properly (might implement in the future)
+    \item \textbf{Testing from Start}: Jest/Supertest for backend, Vitest for frontend. Catch bugs early
+    \item \textbf{Database Indexing}: Add indexes on frequently queried fields (roomId, userId) for production performance
+    \item \textbf{Error Logging}: Implement centralized logging (Winston/Morgan) instead of console.log for production debugging
+    \item \textbf{API Rate Limiting}: Add middleware to prevent abuse before security becomes an afterthought
+\end{enumerate}
+
+\appendix
+
+\section{Additional Resources}
+
+\subsection{Git Commit Timeline}
+
+The development followed a logical progression from infrastructure setup through feature implementation to bug fixes and documentation altought not all of them followed the specific format of fix, feat, or refactor, they show the progressive evolution of the project.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{|p{3cm}|p{5cm}|p{4cm}|}
+\hline
+\textbf{Date} & \textbf{Commit Hash} & \textbf{Description} \\
+\hline
+Apr 8 & \texttt{10fb2cd6} & Initial commit \\
+Apr 8 & \texttt{99dc148e} & npm setup for root, frontend, backend \\
+Apr 8 & \texttt{1a190a5d} & Following commit for previously non-staged changes \\
+Apr 8 & \texttt{2884b1a1} & env and .gitignore \\
+Apr 8 & \texttt{156b5d82} & MongoDB connection (standard string, SRV troubleshoot) \\
+Apr 8 & \texttt{e6af04ce} & Routes, controllers, server.js \\
+Apr 8 & \texttt{94b6149e} & Frontend views, Socket.IO, package.json update \\
+Apr 8 & \texttt{27e5a343} & README update \\
+Apr 20 & \texttt{dec50195} & .env.example for good practice \\
+Apr 20 & \texttt{ee3146c6} & PUT endpoint, ObjectId validation, edit UI \\
+Apr 20 & \texttt{566e1fa9} & ERD diagram generated \\
+Apr 21 & \texttt{3cacae2a} & Bug fixes: roomController, queueController, audio cleanup \\
+Apr 21 & \texttt{3b3a0a2f} & Problem stated in README \\
+Apr 21 & \texttt{c0825154} & README update \\
+Apr 21 & \texttt{800a1811} & LaTeX report first version (buggy) \\
+\hline
+\end{tabular}
+\caption{Development Timeline}
+\end{table}
+
+\end{document}
