@@ -51,8 +51,8 @@
 \titleformat{\section}{\normalfont\Large\bfseries}{\thesection.}{0.5em}{}
 \titleformat{\subsection}{\normalfont\large\bfseries}{\thesubsection.}{0.5em}{}
 
-\title{\textbf{Soundscape} \\ Real-Time Collaborative Music Room Application \\ \large DA219B Fullstack Lab}
-\author{Development Report}
+\title{\textbf{Soundscape} \\ Music Room Application \\ \large DA219B Fullstack Lab}
+\author{Lawrence Arciniegas}
 \date{\today}
 
 \begin{document}
@@ -67,8 +67,9 @@
 % ============================================================================
 \section{System Overview}
 
-Soundscape is a real-time collaborative music room application that solves the problem of synchronizing music playback across multiple listeners. Users can create or join music rooms, queue songs together, and experience synchronized playback with real-time updates using WebSocket communication. The platform enables friends to listen to the same music simultaneously during virtual gatherings or remote hangouts, maintaining a shared queue with voting mechanisms and instant synchronization across all connected clients. This application addresses the gap between individual streaming services and the need for genuine shared listening experiences.
+Soundscape is a web application that aims to solve one problem: letting people listen to the same music at the same time and stay sync. It is designed so that you join a room and just jam to your favorite songs with a cool interphase that foucus on making it a visual experience. Although other apps like Spotify offers similar options, Soundscape is focused on the social aspect of music listening and provides a more interactive and engaging experience for users who want to share their music tastes with friends in real-time.
 
+The app has two sides: the front end (React) is the visual interface where users can create rooms, add songs to the queue, and see what others are listening to. The back end (Express.js) handles all the logic for managing rooms, songs, and queues, as well as real-time synchronization using Socket.IO. MongoDB is used to store all the data related to songs, rooms, and queues.
 \subsection{Technology Stack}
 
 \begin{itemize}
@@ -85,7 +86,7 @@ Soundscape is a real-time collaborative music room application that solves the p
 % ============================================================================
 \section{Database Design}
 
-The database consists of three primary collections with relationships managed through MongoDB ObjectId references. This design supports the core functionality of room management, song queuing, and real-time synchronization.
+The database consists of three primary collections with relationships managed through MongoDB ObjectId references. This design allows correct functionality of room management, song queuing, and real-time synchronization.
 
 \subsection{Entity Relationship Diagram}
 
@@ -119,7 +120,7 @@ The database consists of three primary collections with relationships managed th
     \item \texttt{coverColor}: Dynamic visual representation tied to song characteristics
 \end{itemize}
 \textbf{Validation:} Title and artist are required. BPM constrained to 40--300 range (realistic music range). \\
-\textbf{Sample Data:} 7 realistic songs including ``Blinding Lights'' (The Weeknd), ``Heat Waves'' (Glass Animals), ``Shivers'' (Ed Sheeran).
+\textbf{Sample Data:} 7 realistic songs including songs like: ``Blinding Lights'' (The Weeknd), ``Heat Waves'' (Glass Animals), ``Shivers'' (Ed Sheeran).
 
 \subsection{Collection: Rooms}
 
@@ -483,41 +484,13 @@ exports.updateRoom = async (req, res) => {
 % ============================================================================
 \section{Reflection: Development Challenges and Solutions}
 
-\subsection{Challenge: Real-Time Synchronization Across Multiple Clients}
-
-\textbf{Problem:} The initial approach attempted to rely solely on REST polling for playback state updates. This created several issues:
-\begin{itemize}
-    \item Network latency caused desynchronization between clients
-    \item Excessive database queries from frequent polling
-    \item No truly instantaneous updates when users added songs or paused
-    \item Poor user experience with noticeable delays
-\end{itemize}
-
-\textbf{Solution:} Integrated WebSocket via Socket.IO for bidirectional communication. This enabled:
-\begin{itemize}
-    \item Instant event broadcasting to all connected room clients
-    \item Server-side room state management via Socket.IO namespaces
-    \item Event-driven architecture replacing continuous polling
-    \item Reduced database load and network overhead
-\end{itemize}
-
-\textbf{Implementation Details:}
-\begin{itemize}
-    \item Socket.IO server listening on room-specific events
-    \item Client-side socket listeners automatically sync UI state
-    \item Queue changes broadcast immediately without page reload
-    \item Playback position updated in real-time across all listeners
-\end{itemize}
-
-\textbf{Learning Outcome:} Real-time applications require asynchronous, event-driven communication rather than synchronous polling. Understanding the CAP theorem (eventual consistency vs. strong consistency) became crucial for designing responsive distributed systems. This challenge demonstrated why production applications often combine REST APIs for CRUD operations with WebSockets for live updates.
-
 \subsection{Challenge: MongoDB Atlas Connection via DNS SRV Records}
 
 \textbf{Problem:} The application initially used the `mongodb+srv://` URI scheme for MongoDB Atlas connectivity. During deployment testing, connections failed with `ECONNREFUSED` errors despite correct credentials.
 
 \textbf{Root Cause:} DNS SRV record resolution failed on the target network. The `mongodb+srv://` URI relies on DNS SRV records to discover and connect to MongoDB Atlas cluster nodes. When the DNS server did not return SRV records, the driver could not resolve cluster node addresses. This issue was discovered during initial MongoDB setup (Commit 156b5d82, April 8).
 
-\textbf{Solution:} Switched from SRV-based URI to explicit connection string with all node addresses:
+\textbf{Solution:} Decided to switch from SRV-based URI to explicit connection string with all node addresses:
 
 \begin{lstlisting}[language=bash, caption=Connection String Before (SRV)]
 mongodb+srv://mongo:1404@soundscape.icmlyru.mongodb.net/?appName=soundscape
@@ -530,18 +503,9 @@ ac-zgqzfqs-shard-00-02.icmlyru.mongodb.net:27017/?ssl=true&\
 replicaSet=atlas-61fuhw-shard-0&authSource=admin&appName=soundscape
 \end{lstlisting}
 
-\textbf{Key Differences:}
-\begin{itemize}
-    \item Explicit protocol: `mongodb://` instead of `mongodb+srv://`
-    \item All three shard nodes listed with port 27017
-    \item Replica set name specified: `atlas-61fuhw-shard-0`
-    \item SSL/TLS explicitly enabled
-    \item Admin authentication database specified
-\end{itemize}
+\textbf{Implementation:} Updated `.env` file with the new connection string. Connection string documented in Commit 156b5d82 with notation: ``connected to mongo (using standard connection string as SRV did not work, took some hours of troubleshoot)''.
 
-\textbf{Implementation:} Updated `.env` file with explicit connection string, ensuring environment-specific DNS resolution issues don't prevent database connectivity. Connection string documented in Commit 156b5d82 with notation: ``connected to mongo (using standard connection string as SRV did not work, took some hours of troubleshoot)''.
-
-\textbf{Learning Outcome:} Cloud services provide multiple connectivity options for resilience. While SRV records offer simplicity and flexibility, explicit connection strings provide stability in networks with DNS resolution constraints. This experience highlighted the importance of having fallback connection strategies and understanding the underlying protocols in distributed systems.
+\textbf{Lessons Learned:} On MongoDB Atlas, the `mongodb+srv://` URI is convenient but can lead to connectivity issues if DNS resolution fails. Using explicit node addresses in the connection string provides a solution to this problem. Always test database connectivity in the target deployment environment early to catch such issues.
 
 % ============================================================================
 % SECTION 5: FEATURE ITERATION
@@ -601,7 +565,7 @@ const queueSchema = new mongoose.Schema({
     \item \textbf{Commit ee3146c6} (Apr 20): ``feat: PUT /api/rooms/:id to update the room name, ObjectId validation, edit UI''
 \end{itemize}
 
-\textbf{Visible Iteration:} The 12-day development period between initial backend setup and API improvements demonstrates iterative refinement. Early commits established basic routing and models, while later commits (ee3146c6) added sophisticated validation and update capabilities. This progression shows real-world development evolution rather than a single dump of finished code.
+\textbf{Visible Iteration:} The 12-day development period between initial backend setup and API improvements demonstrates iterative refinement. Early commits did not follow the correct fix, feat format butshow how the process evolved. This progression shows the evolution of the projectrather than a single dump of finished code.
 
 \subsection{Improvement: ObjectId Validation on Queue Additions}
 
@@ -638,73 +602,7 @@ const song = await Song.findById(songId);
 \textbf{Pattern Applied:} This validation pattern was added to all routes accepting ObjectId input, ensuring consistent error handling across the API. Implemented in Commit ee3146c6 along with PUT endpoint for room updates and edit UI integration.
 
 % ============================================================================
-% SECTION 6: COMPLIANCE
-% ============================================================================
-\section{Compliance with Lab Requirements}
-
-\subsection{Project Setup}
-\begin{itemize}
-    \item[✓] React + Vite for frontend
-    \item[✓] Express.js for backend API
-    \item[✓] MongoDB Atlas cloud database
-    \item[✓] Secrets stored in .env file (no hardcoded credentials)
-    \item[✓] concurrently for unified npm start
-    \item[✓] Complete README with 5-minute setup instructions
-\end{itemize}
-
-\subsection{Application Design}
-\begin{itemize}
-    \item[✓] Original domain: collaborative music synchronization
-    \item[✓] Realistic seed data: 7 popular songs, 3 thematic rooms
-    \item[✓] Custom fields: bpm, genre, playbackPosition, votes
-    \item[✓] Problem statement: Clear README description
-\end{itemize}
-
-\subsection{Database}
-\begin{itemize}
-    \item[✓] 3 collections: Songs, Rooms, Queues
-    \item[✓] 5+ realistic documents per collection
-    \item[✓] ObjectId relationships implemented
-    \item[✓] ERD diagram included in report
-    \item[✓] Mongoose validation on all schemas
-\end{itemize}
-
-\subsection{Backend API}
-\begin{itemize}
-    \item[✓] Full CRUD: POST, GET, PUT, DELETE endpoints
-    \item[✓] Room update endpoint: PUT /api/rooms/:id with duplicate name checking
-    \item[✓] Relational endpoints: Queue population with song data
-    \item[✓] Custom endpoint: /api/stats (statistics aggregation)
-    \item[✓] Error handling with HTTP status codes (400, 404, 409, 500)
-    \item[✓] Router-Controller-Model architecture
-    \item[✓] Input validation: ObjectId format checking on all ID inputs
-    \item[✓] Business logic validation: Duplicate name detection on room updates
-\end{itemize}
-
-\subsection{Frontend}
-\begin{itemize}
-    \item[✓] Display main entity data in structured lists
-    \item[✓] Form to create rooms and add songs
-    \item[✓] Inline room editing with name update UI
-    \item[✓] Delete operations with confirmation dialogs
-    \item[✓] Auto-refresh with proper useEffect cleanup
-    \item[✓] Custom features: real-time sync, voting visualization, room management
-    \item[✓] 7+ components with single responsibility
-    \item[✓] Loading and error states displayed
-    \item[✓] Real-time updates via Socket.IO
-\end{itemize}
-
-\subsection{Git Requirements}
-\begin{itemize}
-    \item[✓] 15 meaningful commits across multiple branches
-    \item[✓] Conventional commit messages (feat:, fix:, refactor:)
-    \item[✓] Development spread over 14 days (Apr 8 -- Apr 21, 2026)
-    \item[✓] Clear progression: infrastructure → features → bug fixes → documentation
-    \item[✓] Feature iteration visible between commits (e6af04ce initial → ee3146c6 improvements)
-\end{itemize}
-
-% ============================================================================
-% SECTION 7: APPENDIX
+% SECTION 6: APPENDIX
 % ============================================================================
 \appendix
 \section{Additional Resources}
@@ -765,7 +663,7 @@ Development Period & 14 Days (Apr 8 -- Apr 21, 2026) \\
 
 \subsection{Git Commit Timeline}
 
-The development followed a logical progression from infrastructure setup through feature implementation to bug fixes and documentation.
+The development followed a logical progression from infrastructure setup through feature implementation to bug fixes and documentation altought not all of them followed the specific format of fix, feat, or refactor.
 
 \begin{table}[H]
 \centering
@@ -793,12 +691,5 @@ Apr 21 & \texttt{800a1811} & LaTeX report first version (buggy) \\
 \caption{Development Timeline}
 \end{table}
 
-\textbf{Key Observations:}
-\begin{itemize}
-    \item \textbf{Foundation Phase (Apr 8):} Infrastructure setup, dependencies, database connection troubleshooting
-    \item \textbf{Feature Phase (Apr 20):} API enhancements, validation improvements, UI updates
-    \item \textbf{Polish Phase (Apr 21):} Bug fixes, error handling cleanup, documentation
-    \item \textbf{Total Duration:} 14 days from initial commit to report generation
-\end{itemize}
 
 \end{document}
